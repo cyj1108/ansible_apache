@@ -1,0 +1,93 @@
+---
+- name: Apache HTTPD 소스 컴파일 설치 및 환경 구성
+  hosts: apache_servers
+  become: yes
+  vars:
+    httpd_version: "{{ httpd_version | default('2.4.62') }}"
+    install_path: "{{ install_path | default('/data/apache') }}"
+    src_dir: "/tmp/httpd-{{ httpd_version }}"
+
+  tasks:
+    - name: 1. 시스템 필수 기본 패키지 설치
+      package:
+        name: [gcc, make, expat-devel, pcre-devel, apr-devel, apr-util-devel, openssl-devel, redhat-rpm-config]
+        state: present
+
+    - name: 2. 실행 계정 및 그룹 설정
+      group:
+        name: "{{ apache_user }}"
+        state: present
+
+    - name: 2-2. 실행 유저 설정 (로그인 불가)
+      user:
+        name: "{{ apache_user }}"
+        group: "{{ apache_group }}"
+        shell: /sbin/nologin
+        create_home: no
+        state: present
+
+    - name: 3. 설치 대상 디렉토리 준비
+      file:
+        path: "{{ install_path }}"
+        state: directory
+        owner: "{{ apache_user }}"
+        group: "{{ apache_group }}"
+        mode: '0755'
+
+    - name: 4. 소스 코드 다운로드 및 압축 해제
+      unarchive:
+        src: "https://archive.apache.org/dist/httpd/httpd-{{ httpd_version }}.tar.gz"
+        dest: "/tmp"
+        remote_src: yes
+
+    - name: 5. 이전 컴파일 잔재 제거 (경로 오류 방지)
+      shell: "make distclean || true"
+      args:
+        chdir: "{{ src_dir }}"
+      ignore_errors: yes
+
+    - name: 6. 소스 컴파일 및 설치 진행
+      shell: |
+        ./configure --prefix={{ install_path }} \
+        --enable-modules=all \
+        --enable-mods-shared=all \
+        --enable-proxy \
+        --enable-proxy-ajp \
+        --enable-proxy-http \
+        --enable-ssl \
+        --enable-so && \
+        make clean && \
+        make -j {{ ansible_processor_vcpus }} && \
+        make install
+      args:
+        chdir: "{{ src_dir }}"
+
+    - name: 7. 환경 설정 내 실행 계정 정보 수정
+      replace:
+        path: "{{ install_path }}/conf/httpd.conf"
+        regexp: "{{ item.reg }}"
+        replace: "{{ item.rep }}"
+      loop:
+        - { reg: '^User daemon', rep: "User {{ apache_user }}" }
+        - { reg: '^Group daemon', rep: "Group {{ apache_group }}" }
+
+    - name: 8. 사용자 정의 설정 파일 경로 추가
+      blockinfile:
+        path: "{{ install_path }}/conf/httpd.conf"
+        insertafter: EOF
+        block: |
+          Include conf/extra/httpd-vhosts-custom.conf
+    
+    - name: 8-2. 사용자 정의 설정 파일 초기화
+      file:
+        path: "{{ install_path }}/conf/extra/httpd-vhosts-custom.conf"
+        state: touch
+        owner: "{{ apache_user }}"
+        group: "{{ apache_group }}"
+
+    - name: 9. 전체 디렉토리 소유권 최종 업데이트
+      file:
+        path: "{{ install_path }}"
+        owner: "{{ apache_user }}"
+        group: "{{ apache_group }}"
+        recurse: yes

@@ -1,0 +1,48 @@
+---
+- name: "Apache SSL 인증서 교체 및 설정 적용"
+  hosts: apache_servers
+  become: yes
+  vars:
+    install_path: "/data/apache"
+    ssl_dest_path: "{{ install_path }}/conf/ssl"
+    local_ssl_path: "/ansible/apache/ssl"
+
+  tasks:
+    - name: "1. 서버 내 SSL 저장소 상태 확인 및 생성"
+      file:
+        path: "{{ ssl_dest_path }}"
+        state: directory
+        owner: "{{ apache_user }}"
+        group: "{{ apache_group }}"
+        mode: '0700'
+
+    - name: "2. 신규 인증서 파일 교체 (CRT, KEY)"
+      copy:
+        src: "{{ local_ssl_path }}/{{ item }}"
+        dest: "{{ ssl_dest_path }}/{{ item }}"
+        owner: "{{ apache_user }}"
+        group: "{{ apache_group }}"
+        mode: '0600'
+        backup: yes
+      loop:
+        - server.crt
+        - server.key
+
+    - name: "3. SSL 필수 모듈 활성화 상태 점검"
+      replace:
+        path: "{{ install_path }}/conf/httpd.conf"
+        regexp: '^#LoadModule {{ item }}_module'
+        replace: 'LoadModule {{ item }}_module'
+      loop: [ssl, socache_shmcb]
+
+    - name: "4. 구문 오류 검토 (Syntax Check)"
+      shell: "{{ install_path }}/bin/apachectl configtest"
+      register: config_result
+
+    - name: "5. 신규 인증서 적용 (Graceful Restart)"
+      shell: "{{ install_path }}/bin/apachectl graceful"
+      when: config_result.rc == 0
+
+    - name: "6. 인증서 교체 작전 결과 보고"
+      debug:
+        msg: "성공적으로 인증서가 교체되었습니다. (위치: {{ ssl_dest_path }})"

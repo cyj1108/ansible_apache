@@ -1,0 +1,34 @@
+---
+- name: Apache HTTPD 서비스 제어 및 포트 관리
+  hosts: apache_servers
+  become: yes
+  vars:
+    install_path: "/data/apache"
+
+  tasks:
+    - name: 1. 서비스 포트 설정 변경 (Listen)
+      replace:
+        path: "{{ install_path }}/conf/httpd.conf"
+        regexp: '^Listen .*'
+        replace: "Listen {{ new_port }}"
+      when: action == "change_port"
+
+    - name: 2. 신규 포트 방화벽 허용 설정
+      shell: |
+        firewall-cmd --permanent --add-port={{ new_port }}/tcp || true
+        firewall-cmd --reload || true
+      when: action == "change_port"
+      ignore_errors: yes
+
+    - name: 3. 서비스 상태 제어 수행
+      shell: |
+        {% if action == 'change_port' %}
+        {{ install_path }}/bin/apachectl restart
+        {% else %}
+        {{ install_path }}/bin/apachectl {{ action }}
+        {% endif %}
+      register: control_result
+
+    - name: 4. 결과 보고
+      debug:
+        msg: "작업({{ action }})이 성공적으로 완료되었습니다."

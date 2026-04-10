@@ -1,0 +1,56 @@
+---
+- name: "Apache VirtualHost 추가 및 포트 개방"
+  hosts: apache_servers
+  become: yes
+  vars:
+    install_path: "/data/apache"
+    vhost_conf_path: "{{ install_path }}/conf/extra/httpd-vhosts-custom.conf"
+    httpd_conf_path: "{{ install_path }}/conf/httpd.conf"
+
+  tasks:
+    - name: "1. 가상호스트 필수 프록시 모듈 활성화"
+      replace:
+        path: "{{ httpd_conf_path }}"
+        regexp: '^#LoadModule {{ item }}_module'
+        replace: 'LoadModule {{ item }}_module'
+      loop:
+        - proxy
+        - proxy_http
+        - proxy_ajp
+        - rewrite
+        - slotmem_shm
+
+    - name: "2. 가상호스트 설정 블록 삽입 (연결 방식: {{ conn_method }})"
+      blockinfile:
+        path: "{{ vhost_conf_path }}"
+        marker: "# {mark} VHOST CONFIG FOR PORT {{ vhost_port }}"
+        block: |
+          Listen {{ vhost_port }}
+          <VirtualHost *:{{ vhost_port }}>
+              ServerName localhost
+              ProxyRequests Off
+              ProxyPreserveHost On
+              <Proxy *>
+                  Require all granted
+              </Proxy>
+              {% if conn_method == 'jk' %}
+              ProxyPass / ajp://localhost:{{ backend_port }}/
+              ProxyPassReverse / ajp://localhost:{{ backend_port }}/
+              {% else %}
+              ProxyPass / http://localhost:{{ backend_port }}/
+              ProxyPassReverse / http://localhost:{{ backend_port }}/
+              {% endif %}
+          </VirtualHost>
+
+    - name: "3. 신규 가상호스트 포트 방화벽 허용"
+      shell: |
+        firewall-cmd --permanent --add-port={{ vhost_port }}/tcp || true
+        firewall-cmd --reload || true
+      ignore_errors: yes
+
+    - name: "4. 설정 적용을 위한 서비스 재시작"
+      shell: "{{ install_path }}/bin/apachectl restart"
+
+    - name: "5. 결과 보고"
+      debug:
+        msg: "포트 {{ vhost_port }}에 대한 가상호스트({{ conn_method }}) 설정이 완료되었습니다."
