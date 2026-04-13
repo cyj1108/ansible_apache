@@ -1,40 +1,47 @@
 ---
-- name: Apache HTTPD 소스 컴파일 설치 및 환경 구성
+- name: Apache HTTPD 소스 컴파일 설치 및 환경 구성 (GitHub 소스 활용)
   hosts: apache_servers
   become: yes
   vars:
-    httpd_version: "{{ httpd_version | default('2.4.62') }}"
-    install_path: "{{ install_path | default('/data/apache') }}"
-    src_dir: "/tmp/httpd-{{ httpd_version }}"
+    # --- 전역 변수 설정 ---
+    httpd_version: "2.4.62"
+    install_path: "/data/apache"
+    base_work_dir: "/data/install_files"
+    apache_user: "apache"
+    apache_group: "apache"
+    
+    # 깃허브 저장소 내의 파일 경로 (세마포어가 복제한 상대 경로)
+    # 깃허브의 install_files/ 폴더 안에 파일을 넣었다면 아래와 같이 지정합니다.
+    local_src_file: "./install_files/httpd-{{ httpd_version }}.tar.gz"
+    
+    # 대상 서버 저장 경로
+    src_tar: "{{ base_work_dir }}/httpd-{{ httpd_version }}.tar.gz"
+    extract_path: "{{ base_work_dir }}/source_extract"
 
   tasks:
-- name: 1. 시스템 필수 기본 패키지 설치
-      dnf:  # package 대신 dnf를 명시적으로 사용 (RHEL계열 권장)
-        name:
-          - gcc
-          - make
-          - expat-devel
-          - pcre-devel
-          - apr-devel
-          - apr-util-devel
-          - openssl-devel
-          - redhat-rpm-config
-        state: present
-        enablerepo: "crb,powertools" # 패키지가 없을 경우를 대비해 저장소 활성화 시도
-      ignore_errors: yes # 일부 OS에서 저장소 이름이 다를 수 있어 안전장치 추가
+    - name: "1. OS별 패키지 리스트 설정"
+      set_fact:
+        target_packages: "{{ (ansible_os_family == 'RedHat') | ternary(['gcc', 'make', 'expat-devel', 'pcre-devel', 'apr-devel', 'apr-util-devel', 'openssl-devel', 'redhat-rpm-config'], ['gcc', 'make', 'libexpat1-dev', 'libpcre3-dev', 'libapr1-dev', 'libaprutil1-dev', 'libssl-dev', 'build-essential']) }}"
 
-    - name: 1-2. (실패 시 재시도) 개별 패키지 설치 체크
-      package:
-        name: "{{ item }}"
+    - name: "2. [RedHat/CentOS] 필수 패키지 설치"
+      dnf:
+        name: "{{ target_packages }}"
         state: present
-      loop: [gcc, make, expat-devel, pcre-devel, apr-devel, apr-util-devel, openssl-devel, redhat-rpm-config]
+        enablerepo: "crb,powertools"
+      when: ansible_os_family == "RedHat"
+      ignore_errors: yes
 
-    - name: 2. 실행 계정 및 그룹 설정
-      group:
-        name: "{{ apache_user }}"
+    - name: "3. [Ubuntu/Debian] 필수 패키지 설치"
+      apt:
+        name: "{{ target_packages }}"
         state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
 
-    - name: 2-2. 실행 유저 설정 (로그인 불가)
+    - name: "4. 실행 계정 생성"
+      group: { name: "{{ apache_group }}", state: present }
+
+    - name: "4-2. 실행 유저 생성"
       user:
         name: "{{ apache_user }}"
         group: "{{ apache_group }}"
@@ -42,27 +49,52 @@
         create_home: no
         state: present
 
-    - name: 3. 설치 대상 디렉토리 준비
+    - name: "5. 대상 서버 작업 디렉토리 생성"
       file:
-        path: "{{ install_path }}"
+        path: "{{ item }}"
         state: directory
         owner: "{{ apache_user }}"
         group: "{{ apache_group }}"
         mode: '0755'
+      loop:
+        - "{{ install_path }}"
+        - "{{ base_work_dir }}"
+        - "{{ extract_path }}"
 
-    - name: 4. 소스 코드 다운로드 및 압축 해제
+    - name: "6. [전송] GitHub 저장소 -> 대상 서버로 소스 복사"
+      copy:
+        src: "{{ local_src_file }}"
+        dest: "{{ src_tar }}"
+        owner: "{{ apache_user }}"
+        group: "{{ apache_group }}"
+        mode: '0644'
+
+    - name: "7. 소스 코드 압축 해제"
       unarchive:
-        src: "https://archive.apache.org/dist/httpd/httpd-{{ httpd_version }}.tar.gz"
-        dest: "/tmp"
+        src: "{{ src_tar }}"
+        dest: "{{ extract_path }}"
         remote_src: yes
+        owner: "{{ apache_user }}"
+        group: "{{ apache_group }}"
 
-    - name: 5. 이전 컴파일 잔재 제거 (경로 오류 방지)
+    - name: "8. 실제 소스 폴더 경로 탐색"
+      find:
+        paths: "{{ extract_path }}"
+        file_type: directory
+        patterns: "httpd-*"
+      register: found_dirs
+
+    - name: "9. 작업 경로 변수 등록"
+      set_fact:
+        real_src_dir: "{{ found_dirs.files[0].path }}"
+
+    - name: "10. 이전 컴파일 잔재 제거"
       shell: "make distclean || true"
       args:
-        chdir: "{{ src_dir }}"
+        chdir: "{{ real_src_dir }}"
       ignore_errors: yes
 
-    - name: 6. 소스 컴파일 및 설치 진행
+    - name: "11. 소스 컴파일 및 설치 진행"
       shell: |
         ./configure --prefix={{ install_path }} \
         --enable-modules=all \
@@ -73,12 +105,12 @@
         --enable-ssl \
         --enable-so && \
         make clean && \
-        make -j {{ ansible_processor_vcpus }} && \
+        make -j {{ ansible_processor_vcpus | default(2) }} && \
         make install
       args:
-        chdir: "{{ src_dir }}"
+        chdir: "{{ real_src_dir }}"
 
-    - name: 7. 환경 설정 내 실행 계정 정보 수정
+    - name: "12. 환경 설정 내 실행 계정 정보 수정"
       replace:
         path: "{{ install_path }}/conf/httpd.conf"
         regexp: "{{ item.reg }}"
@@ -87,21 +119,21 @@
         - { reg: '^User daemon', rep: "User {{ apache_user }}" }
         - { reg: '^Group daemon', rep: "Group {{ apache_group }}" }
 
-    - name: 8. 사용자 정의 설정 파일 경로 추가
+    - name: "13. 사용자 정의 설정 파일 경로 추가"
       blockinfile:
         path: "{{ install_path }}/conf/httpd.conf"
         insertafter: EOF
         block: |
           Include conf/extra/httpd-vhosts-custom.conf
-    
-    - name: 8-2. 사용자 정의 설정 파일 초기화
+
+    - name: "13-2. 사용자 정의 설정 파일 초기화"
       file:
         path: "{{ install_path }}/conf/extra/httpd-vhosts-custom.conf"
         state: touch
         owner: "{{ apache_user }}"
         group: "{{ apache_group }}"
 
-    - name: 9. 전체 디렉토리 소유권 최종 업데이트
+    - name: "14. 전체 설치 디렉토리 소유권 최종 업데이트"
       file:
         path: "{{ install_path }}"
         owner: "{{ apache_user }}"
