@@ -3,7 +3,6 @@
   hosts: apache_servers
   become: yes
   vars:
-    # OS별 패키지명 및 설정 경로 정의
     apache_pkg: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
     apache_conf_file: "{{ (ansible_os_family == 'RedHat') | ternary('/etc/httpd/conf/httpd.conf', '/etc/apache2/apache2.conf') }}"
     apache_user: "{{ (ansible_os_family == 'RedHat') | ternary('apache', 'www-data') }}"
@@ -30,18 +29,18 @@
         - "{{ install_path }}/conf/ssl"
         - "{{ install_path }}/bin"
 
-    - name: "3-1. 실제 apachectl 위치 확인"
-      shell: "which {{ (ansible_os_family == 'RedHat') | ternary('apachectl', 'apache2ctl') }}"
-      register: real_ctl_path
+    - name: "3-1. 실제 실행 파일 위치 강제 검색 (Debug용)"
+      shell: "find /usr -name 'apache*ctl' | head -n 1"
+      register: found_ctl_path
       ignore_errors: yes
 
-    - name: "3-2. 실행 파일 심볼릭 링크 생성 (동적 경로 적용)"
+    - name: "3-2. 실행 파일 심볼릭 링크 생성 (Force 적용)"
       file:
-        # 위에서 찾은 실제 경로를 사용하거나, 실패 시 기본값을 강제로 넣음
-        src: "{{ real_ctl_path.stdout | default((ansible_os_family == 'RedHat') | ternary('/usr/sbin/apachectl', '/usr/sbin/apache2ctl')) }}"
+        # 검색된 경로가 있으면 쓰고, 없으면 기본 예상 경로를 강제로 연결
+        src: "{{ found_ctl_path.stdout | default((ansible_os_family == 'RedHat') | ternary('/usr/sbin/apachectl', '/usr/sbin/apache2ctl')) }}"
         dest: "{{ install_path }}/bin/apachectl"
         state: link
-        force: yes
+        force: yes  # << 이 옵션이 이번 에러를 무시하고 링크를 생성해줍니다.
 
     - name: "4. 사용자 정의 설정 파일 초기화"
       copy:
@@ -81,5 +80,5 @@
       debug:
         msg: 
           - "Apache 패키지 구성 완료"
-          - "실제 실행파일 경로: {{ real_ctl_path.stdout | default('Not Found') }}"
+          - "검색된 원본 경로: {{ found_ctl_path.stdout | default('N/A') }}"
           - "설정 검사 결과: {{ config_test.stdout | default('N/A') }}"
