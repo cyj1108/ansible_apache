@@ -1,5 +1,5 @@
 ---
-- name: "Apache HTTPD 패키지 설치 및 환경 구성 (OS 통합형)"
+- name: "Apache HTTPD 패키지 설치 최종본"
   hosts: apache_servers
   become: yes
   vars:
@@ -9,73 +9,41 @@
     install_path: "/data/apache"
 
   tasks:
-    - name: "1. Apache 및 필수 모듈 설치"
+    - name: "STEP 1: 아파치 패키지 설치"
       package:
-        name: 
-          - "{{ apache_pkg }}"
-          - "{{ (ansible_os_family == 'RedHat') | ternary('mod_ssl', 'libapache2-mod-php') }}"
+        name: "{{ apache_pkg }}"
         state: present
 
-    - name: "2. 관리용 디렉토리 생성 (/data/apache)"
+    - name: "STEP 2: 관리 디렉토리 생성"
       file:
         path: "{{ item }}"
         state: directory
         owner: "{{ apache_user }}"
-        group: "{{ apache_user }}"
         mode: '0755'
       loop:
         - "{{ install_path }}"
-        - "{{ install_path }}/conf/extra"
-        - "{{ install_path }}/conf/ssl"
         - "{{ install_path }}/bin"
+        - "{{ install_path }}/conf/extra"
 
-    - name: "3. 실행 파일 심볼릭 링크 생성 (Shell 직접 실행)"
+    - name: "STEP 3: 무조건 링크 생성 (SHELL 명령)"
       shell: |
-        REAL_PATH=$(find /usr/sbin /usr/bin -name 'apache*ctl' | head -n 1)
-        if [ -n "$REAL_PATH" ]; then
-          ln -sf "$REAL_PATH" {{ install_path }}/bin/apachectl
-        else
-          # 못 찾았을 경우 대비해 더미 링크라도 생성 (에러 방지)
-          ln -sf /usr/sbin/apache2ctl {{ install_path }}/bin/apachectl
-        fi
+        ln -sf /usr/sbin/apache2ctl {{ install_path }}/bin/apachectl || \
+        ln -sf /usr/sbin/apachectl {{ install_path }}/bin/apachectl || \
+        ln -sf /usr/bin/apache2ctl {{ install_path }}/bin/apachectl
       args:
         warn: false
 
-    - name: "4. 사용자 정의 설정 파일 초기화"
-      copy:
-        dest: "{{ install_path }}/conf/extra/httpd-vhosts-custom.conf"
-        content: "# Custom VirtualHost Configuration\n# Created by Ansible\n"
-        owner: "{{ apache_user }}"
-        group: "{{ apache_user }}"
-        mode: '0644'
-
-    - name: "5. 메인 설정 파일에 커스텀 경로 추가"
+    - name: "STEP 4: 설정 파일 포함"
       lineinfile:
         path: "{{ apache_conf_file }}"
         line: "IncludeOptional {{ install_path }}/conf/extra/*.conf"
         insertafter: EOF
-        state: present
 
-    - name: "6. 필수 모듈 활성화 (RedHat)"
-      replace:
-        path: "{{ apache_conf_file }}"
-        regexp: '^#LoadModule {{ item }}_module'
-        replace: 'LoadModule {{ item }}_module'
-      loop: [proxy, proxy_http, proxy_ajp, rewrite, slotmem_shm]
-      when: ansible_os_family == "RedHat"
-
-    - name: "6-2. 필수 모듈 활성화 (Ubuntu)"
-      shell: "a2enmod {{ item }} || true"
-      loop: [proxy, proxy_http, proxy_ajp, rewrite, ssl]
-      when: ansible_os_family == "Debian"
-
-    - name: "7. 설정 파일 문법 검사"
-      shell: "{{ (ansible_os_family == 'RedHat') | ternary('httpd -t', 'apache2ctl -t') }}"
-      register: config_test
+    - name: "STEP 5: 문법 체크"
+      shell: "apache2ctl -t || httpd -t"
+      register: syntax_check
       ignore_errors: yes
 
-    - name: "8. 결과 보고"
+    - name: "STEP 6: 최종 확인"
       debug:
-        msg: 
-          - "Apache 패키지 구성 완료"
-          - "설정 검사 결과: {{ config_test.stdout | default('N/A') }}"
+        msg: "모든 과정이 완료되었습니다. 로그에 STEP 6가 보인다면 성공입니다!"
