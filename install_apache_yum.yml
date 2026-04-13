@@ -5,7 +5,6 @@
   vars:
     # OS별 패키지명 및 설정 경로 정의
     apache_pkg: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
-    apache_conf_dir: "{{ (ansible_os_family == 'RedHat') | ternary('/etc/httpd', '/etc/apache2') }}"
     apache_conf_file: "{{ (ansible_os_family == 'RedHat') | ternary('/etc/httpd/conf/httpd.conf', '/etc/apache2/apache2.conf') }}"
     apache_user: "{{ (ansible_os_family == 'RedHat') | ternary('apache', 'www-data') }}"
     install_path: "/data/apache"
@@ -31,13 +30,18 @@
         - "{{ install_path }}/conf/ssl"
         - "{{ install_path }}/bin"
 
-    - name: "3. 실행 파일 심볼릭 링크 생성 (강제 옵션 추가)"
+    - name: "3-1. 실제 apachectl 위치 확인"
+      shell: "which {{ (ansible_os_family == 'RedHat') | ternary('apachectl', 'apache2ctl') }}"
+      register: real_ctl_path
+      ignore_errors: yes
+
+    - name: "3-2. 실행 파일 심볼릭 링크 생성 (동적 경로 적용)"
       file:
-        # RedHat은 apachectl, Ubuntu는 apache2ctl을 사용
-        src: "{{ (ansible_os_family == 'RedHat') | ternary('/usr/sbin/apachectl', '/usr/sbin/apache2ctl') }}"
+        # 위에서 찾은 실제 경로를 사용하거나, 실패 시 기본값을 강제로 넣음
+        src: "{{ real_ctl_path.stdout | default((ansible_os_family == 'RedHat') | ternary('/usr/sbin/apachectl', '/usr/sbin/apache2ctl')) }}"
         dest: "{{ install_path }}/bin/apachectl"
         state: link
-        force: yes  # 원본 파일이 아직 없더라도 링크를 먼저 생성함
+        force: yes
 
     - name: "4. 사용자 정의 설정 파일 초기화"
       copy:
@@ -47,14 +51,14 @@
         group: "{{ apache_user }}"
         mode: '0644'
 
-    - name: "5. 메인 설정 파일에 커스텀 경로 추가 (Include)"
+    - name: "5. 메인 설정 파일에 커스텀 경로 추가"
       lineinfile:
         path: "{{ apache_conf_file }}"
         line: "IncludeOptional {{ install_path }}/conf/extra/*.conf"
         insertafter: EOF
         state: present
 
-    - name: "6. 필수 모듈 활성화 (RedHat 계열)"
+    - name: "6. 필수 모듈 활성화 (RedHat)"
       replace:
         path: "{{ apache_conf_file }}"
         regexp: '^#LoadModule {{ item }}_module'
@@ -62,7 +66,7 @@
       loop: [proxy, proxy_http, proxy_ajp, rewrite, slotmem_shm]
       when: ansible_os_family == "RedHat"
 
-    - name: "6-2. 필수 모듈 활성화 (Ubuntu/Debian 계열)"
+    - name: "6-2. 필수 모듈 활성화 (Ubuntu)"
       shell: "a2enmod {{ item }}"
       loop: [proxy, proxy_http, proxy_ajp, rewrite, ssl]
       when: ansible_os_family == "Debian"
@@ -77,5 +81,5 @@
       debug:
         msg: 
           - "Apache 패키지 구성 완료"
-          - "OS Family: {{ ansible_os_family }}"
+          - "실제 실행파일 경로: {{ real_ctl_path.stdout | default('Not Found') }}"
           - "설정 검사 결과: {{ config_test.stdout | default('N/A') }}"
