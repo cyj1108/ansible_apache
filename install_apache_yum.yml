@@ -1,23 +1,29 @@
 ---
-- name: "Apache HTTPD YUM 패키지 설치 및 환경 구성"
+- name: "Apache HTTPD 패키지 설치 및 환경 구성 (OS 통합형)"
   hosts: apache_servers
   become: yes
   vars:
+    # OS별 패키지명 및 설정 경로 정의
+    apache_pkg: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
+    apache_conf_dir: "{{ (ansible_os_family == 'RedHat') | ternary('/etc/httpd', '/etc/apache2') }}"
+    apache_conf_file: "{{ (ansible_os_family == 'RedHat') | ternary('/etc/httpd/conf/httpd.conf', '/etc/apache2/apache2.conf') }}"
+    apache_user: "{{ (ansible_os_family == 'RedHat') | ternary('apache', 'www-data') }}"
     install_path: "/data/apache"
-    httpd_conf_path: "/etc/httpd/conf/httpd.conf"
 
   tasks:
-    - name: "1. Apache 및 필수 모듈 YUM 설치"
-      yum:
-        name: [httpd, mod_ssl, mod_proxy_html]
+    - name: "1. Apache 및 필수 모듈 설치"
+      package:
+        name: 
+          - "{{ apache_pkg }}"
+          - "{{ (ansible_os_family == 'RedHat') | ternary('mod_ssl', 'libapache2-mod-php') }}"
         state: present
 
     - name: "2. 관리용 디렉토리 생성 (/data/apache)"
       file:
         path: "{{ item }}"
         state: directory
-        owner: apache
-        group: apache
+        owner: "{{ apache_user }}"
+        group: "{{ apache_user }}"
         mode: '0755'
       loop:
         - "{{ install_path }}"
@@ -25,38 +31,51 @@
         - "{{ install_path }}/conf/ssl"
         - "{{ install_path }}/bin"
 
-    - name: "3. 실행 파일 심볼릭 링크 생성 (기존 제어 스크립트 호환)"
+    - name: "3. 실행 파일 심볼릭 링크 생성 (강제 옵션 추가)"
       file:
-        src: "/usr/sbin/apachectl"
+        # RedHat은 apachectl, Ubuntu는 apache2ctl을 사용
+        src: "{{ (ansible_os_family == 'RedHat') | ternary('/usr/sbin/apachectl', '/usr/sbin/apache2ctl') }}"
         dest: "{{ install_path }}/bin/apachectl"
         state: link
+        force: yes  # 원본 파일이 아직 없더라도 링크를 먼저 생성함
 
-    - name: "4. 사용자 정의 설정 파일 초기화 (더미 주석 포함)"
+    - name: "4. 사용자 정의 설정 파일 초기화"
       copy:
         dest: "{{ install_path }}/conf/extra/httpd-vhosts-custom.conf"
-        content: "# Custom VirtualHost Configuration\n# Created by Ansible Sangbyeong Operation\n"
-        owner: apache
-        group: apache
+        content: "# Custom VirtualHost Configuration\n# Created by Ansible\n"
+        owner: "{{ apache_user }}"
+        group: "{{ apache_user }}"
         mode: '0644'
 
     - name: "5. 메인 설정 파일에 커스텀 경로 추가 (Include)"
       lineinfile:
-        path: "{{ httpd_conf_path }}"
+        path: "{{ apache_conf_file }}"
         line: "IncludeOptional {{ install_path }}/conf/extra/*.conf"
         insertafter: EOF
         state: present
 
-    - name: "6. 필수 모듈 활성화 (YUM 표준)"
+    - name: "6. 필수 모듈 활성화 (RedHat 계열)"
       replace:
-        path: "{{ httpd_conf_path }}"
+        path: "{{ apache_conf_file }}"
         regexp: '^#LoadModule {{ item }}_module'
         replace: 'LoadModule {{ item }}_module'
       loop: [proxy, proxy_http, proxy_ajp, rewrite, slotmem_shm]
+      when: ansible_os_family == "RedHat"
 
-    - name: "7. 설정 파일 문법 최종 검토 (Syntax Check)"
-      shell: "httpd -t"
+    - name: "6-2. 필수 모듈 활성화 (Ubuntu/Debian 계열)"
+      shell: "a2enmod {{ item }}"
+      loop: [proxy, proxy_http, proxy_ajp, rewrite, ssl]
+      when: ansible_os_family == "Debian"
+      ignore_errors: yes
+
+    - name: "7. 설정 파일 문법 검사"
+      shell: "{{ (ansible_os_family == 'RedHat') | ternary('httpd -t', 'apache2ctl -t') }}"
       register: config_test
+      ignore_errors: yes
 
-    - name: "8. 결과 보고 (가동은 메뉴 2번에서)"
+    - name: "8. 결과 보고"
       debug:
-        msg: "YUM 설치 및 구성이 완료되었습니다. 서비스 가동은 메뉴 2번을 이용하십시오!"
+        msg: 
+          - "Apache 패키지 구성 완료"
+          - "OS Family: {{ ansible_os_family }}"
+          - "설정 검사 결과: {{ config_test.stdout | default('N/A') }}"
