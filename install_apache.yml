@@ -8,8 +8,8 @@
     src_dir: "/tmp/httpd-{{ httpd_version }}"
 
   tasks:
-- name: 1. 시스템 필수 기본 패키지 설치
-      dnf:  # package 대신 dnf를 명시적으로 사용 (RHEL계열 권장)
+    - name: 1. 시스템 필수 기본 패키지 설치
+      dnf:
         name:
           - gcc
           - make
@@ -20,18 +20,26 @@
           - openssl-devel
           - redhat-rpm-config
         state: present
-        enablerepo: "crb,powertools" # 패키지가 없을 경우를 대비해 저장소 활성화 시도
-      ignore_errors: yes # 일부 OS에서 저장소 이름이 다를 수 있어 안전장치 추가
+        enablerepo: "crb,powertools"
+      ignore_errors: yes
 
     - name: 1-2. (실패 시 재시도) 개별 패키지 설치 체크
       package:
         name: "{{ item }}"
         state: present
-      loop: [gcc, make, expat-devel, pcre-devel, apr-devel, apr-util-devel, openssl-devel, redhat-rpm-config]
+      loop:
+        - gcc
+        - make
+        - expat-devel
+        - pcre-devel
+        - apr-devel
+        - apr-util-devel
+        - openssl-devel
+        - redhat-rpm-config
 
     - name: 2. 실행 계정 및 그룹 설정
       group:
-        name: "{{ apache_user }}"
+        name: "{{ apache_group }}"
         state: present
 
     - name: 2-2. 실행 유저 설정 (로그인 불가)
@@ -93,7 +101,7 @@
         insertafter: EOF
         block: |
           Include conf/extra/httpd-vhosts-custom.conf
-    
+
     - name: 8-2. 사용자 정의 설정 파일 초기화
       file:
         path: "{{ install_path }}/conf/extra/httpd-vhosts-custom.conf"
