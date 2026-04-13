@@ -29,18 +29,17 @@
         - "{{ install_path }}/conf/ssl"
         - "{{ install_path }}/bin"
 
-    - name: "3-1. 실제 실행 파일 위치 강제 검색 (Debug용)"
-      shell: "find /usr -name 'apache*ctl' | head -n 1"
-      register: found_ctl_path
-      ignore_errors: yes
-
-    - name: "3-2. 실행 파일 심볼릭 링크 생성 (Force 적용)"
-      file:
-        # 검색된 경로가 있으면 쓰고, 없으면 기본 예상 경로를 강제로 연결
-        src: "{{ found_ctl_path.stdout | default((ansible_os_family == 'RedHat') | ternary('/usr/sbin/apachectl', '/usr/sbin/apache2ctl')) }}"
-        dest: "{{ install_path }}/bin/apachectl"
-        state: link
-        force: yes  # << 이 옵션이 이번 에러를 무시하고 링크를 생성해줍니다.
+    - name: "3. 실행 파일 심볼릭 링크 생성 (Shell 직접 실행)"
+      shell: |
+        REAL_PATH=$(find /usr/sbin /usr/bin -name 'apache*ctl' | head -n 1)
+        if [ -n "$REAL_PATH" ]; then
+          ln -sf "$REAL_PATH" {{ install_path }}/bin/apachectl
+        else
+          # 못 찾았을 경우 대비해 더미 링크라도 생성 (에러 방지)
+          ln -sf /usr/sbin/apache2ctl {{ install_path }}/bin/apachectl
+        fi
+      args:
+        warn: false
 
     - name: "4. 사용자 정의 설정 파일 초기화"
       copy:
@@ -66,10 +65,9 @@
       when: ansible_os_family == "RedHat"
 
     - name: "6-2. 필수 모듈 활성화 (Ubuntu)"
-      shell: "a2enmod {{ item }}"
+      shell: "a2enmod {{ item }} || true"
       loop: [proxy, proxy_http, proxy_ajp, rewrite, ssl]
       when: ansible_os_family == "Debian"
-      ignore_errors: yes
 
     - name: "7. 설정 파일 문법 검사"
       shell: "{{ (ansible_os_family == 'RedHat') | ternary('httpd -t', 'apache2ctl -t') }}"
@@ -80,5 +78,4 @@
       debug:
         msg: 
           - "Apache 패키지 구성 완료"
-          - "검색된 원본 경로: {{ found_ctl_path.stdout | default('N/A') }}"
           - "설정 검사 결과: {{ config_test.stdout | default('N/A') }}"
