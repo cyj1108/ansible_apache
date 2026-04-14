@@ -30,14 +30,14 @@
       when: ansible_os_family == 'RedHat'
 
     - name: "STEP 3: 잔여 디렉토리 소거"
-      # 패키지 삭제 후에도 남아있는 끈질긴 폴더들을 물리적으로 제거합니다.
+      # 패키지 삭제 후에도 남아있는 폴더들을 물리적으로 제거.
       file:
         path: "{{ item }}"
         state: absent
       loop:
         - "/etc/apache2"
         - "/etc/httpd"
-        - "/var/www/html"  # 기본 웹 페이지 잔해까지 정리
+        - "/var/www/html"  # 기본 웹 페이지 잔해 정리
 
     - name: "STEP 4: 최종 보고"
       debug:
