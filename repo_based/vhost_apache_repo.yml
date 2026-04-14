@@ -1,9 +1,9 @@
 ---
-- name: "Apache vhost 표준 구성 작전 (repo 기반)"
+- name: "Apache vhost 표준 구성 (repo 기반)"
   hosts: apache_servers
   become: yes
   vars:
-    domain_name: "my-service.local"
+    domain_name: "test1108.dbinc.com"
     doc_root: "/var/www/{{ domain_name }}"
     listen_port: 80  # 현재 사용 중인 포트
 
@@ -49,7 +49,7 @@
     - name: "STEP 5: 테스트용 index.html 생성"
       copy:
         dest: "{{ doc_root }}/index.html"
-        content: "<h1>{{ domain_name }} vhost 작전 성공! 사령관님 가즈아!</h1>"
+        content: "<h1>{{ domain_name }} vhost 추가 성공!</h1>"
         owner: www-data
         group: www-data
         mode: '0644'
@@ -59,7 +59,7 @@
         name: apache2
         state: reloaded
 
-    - name: "📢 [최종 작전 보고서]"
+    - name: "📢 [최종 설정 내역]"
       debug:
         msg: 
           - "=========================================="
