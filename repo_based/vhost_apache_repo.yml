@@ -1,5 +1,5 @@
 ---
-- name: "Apache vhost 표준 구성 (repo 기반)"
+- name: "Apache repo_base vhost Set"
   hosts: apache_servers
   become: yes
   vars:
