@@ -1,25 +1,44 @@
 ---
-- name: "Apache HTTPD 패키지 repo 기반 삭제"
+- name: "Apache HTTPD 완전 소거 및 설정 정화 작전"
   hosts: apache_servers
   become: yes
   vars:
-    # 설치 시와 동일한 OS별 패키지/서비스 명칭 사용
     apache_pkg: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
     apache_service: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
 
   tasks:
-    - name: "STEP 1: 아파치 서비스 중단"
+    - name: "STEP 1: 아파치 서비스 강제 중단 및 비활성화"
       service:
         name: "{{ apache_service }}"
         state: stopped
         enabled: no
       ignore_errors: yes
 
-    - name: "STEP 2: 아파치 표준 패키지 제거 (OS 명령어 기반)"
-      package:
+    - name: "STEP 2 [Debian/Ubuntu]: 설정 파일까지 싹 밀어버리는 숙청(Purge)"
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: yes           # 설정 파일까지 완벽 제거하는 핵심 옵션!
+        autoremove: yes      # 불필요한 의존성 패키지까지 정리
+      loop: ["apache2", "apache2-utils", "apache2-bin", "apache2-data"]
+      when: ansible_os_family == 'Debian'
+
+    - name: "STEP 2 [RedHat/CentOS]: 패키지 및 관련 설정 제거"
+      yum:
         name: "{{ apache_pkg }}"
         state: absent
+      when: ansible_os_family == 'RedHat'
 
-    - name: "STEP 3: 최종 보고"
+    - name: "STEP 3: 잔여 디렉토리 완전 소거 (최후의 정화)"
+      # 패키지 삭제 후에도 남아있는 끈질긴 폴더들을 물리적으로 제거합니다.
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/etc/apache2"
+        - "/etc/httpd"
+        - "/var/www/html"  # 기본 웹 페이지 잔해까지 정리
+
+    - name: "STEP 4: 최종 보고"
       debug:
-        msg: "표준 삭제 완료! {{ ansible_distribution }}에서 아파치가 삭제 되었습니다."
+        msg: "완전 정화 완료! 이제 다시 설치(Install)해도 아무런 충돌이 없을 것입니다!"
