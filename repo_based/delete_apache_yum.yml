@@ -1,5 +1,5 @@
 ---
-- name: "Apache HTTPD 전천후 완전 삭제 작전"
+- name: "Apache HTTPD repo 기반 삭제"
   hosts: apache_servers
   become: yes
   vars:
