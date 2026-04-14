@@ -1,5 +1,5 @@
 ---
-- name: "Apache HTTPD 패키지 표준 설치 작전"
+- name: "Apache HTTPD 패키지 repo 기반 설치"
   hosts: apache_servers
   become: yes
   vars:
