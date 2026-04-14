@@ -1,5 +1,5 @@
 ---
-- name: "Apache HTTPD 완전 소거 및 설정 정화 작전"
+- name: "Apache HTTPD repo_base delete Process"
   hosts: apache_servers
   become: yes
   vars:
@@ -14,7 +14,7 @@
         enabled: no
       ignore_errors: yes
 
-    - name: "STEP 2 [Debian/Ubuntu]: 설정 파일까지 싹 밀어버리는 숙청(Purge)"
+    - name: "STEP 2 [Debian/Ubuntu]: 설정 파일확인 및 삭제"
       apt:
         name: "{{ item }}"
         state: absent
@@ -29,7 +29,7 @@
         state: absent
       when: ansible_os_family == 'RedHat'
 
-    - name: "STEP 3: 잔여 디렉토리 완전 소거 (최후의 정화)"
+    - name: "STEP 3: 잔여 디렉토리 소거"
       # 패키지 삭제 후에도 남아있는 끈질긴 폴더들을 물리적으로 제거합니다.
       file:
         path: "{{ item }}"
@@ -41,4 +41,4 @@
 
     - name: "STEP 4: 최종 보고"
       debug:
-        msg: "완전 정화 완료! 이제 다시 설치(Install)해도 아무런 충돌이 없을 것입니다!"
+        msg: "설치 삭제 완료!"
