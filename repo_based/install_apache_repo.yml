@@ -1,5 +1,5 @@
 ---
-- name: "Apache HTTPD repo_base install Process"
+- name: "Apache repo_base install Process"
   hosts: apache_servers
   become: yes
   vars:
