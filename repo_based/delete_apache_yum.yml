@@ -1,5 +1,5 @@
 ---
-- name: "Apache HTTPD 패키지 repo 기반 삭제 작전"
+- name: "Apache HTTPD 패키지 repo 기반 삭제"
   hosts: apache_servers
   become: yes
   vars:
@@ -22,4 +22,4 @@
 
     - name: "STEP 3: 최종 보고"
       debug:
-        msg: "표준 삭제 완료! {{ ansible_distribution }}에서 아파치 병력이 철수했습니다."
+        msg: "표준 삭제 완료! {{ ansible_distribution }}에서 아파치가 삭제 되었습니다."
