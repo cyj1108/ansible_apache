@@ -4,9 +4,9 @@
   become: yes
   vars:
     ssl_dest_path: "/etc/apache2/ssl"
-    # 사령관님, 깃허브 내 실제 인증서 파일 경로를 지정하십시오 (상대경로 가능)
-    ssl_src_crt: "ssl/server.crt"
-    ssl_src_key: "ssl/server.key"
+    # 현재 위치(repo_based)의 상위 폴더(../)에 있는 ssl 폴더를 조준합니다!
+    ssl_src_crt: "../ssl/server.crt"
+    ssl_src_key: "../ssl/server.key"
 
   tasks:
     - name: "STEP 1: SSL 모듈 및 관련 의존성 활성화"
@@ -22,22 +22,22 @@
         group: root
         mode: '0700'
 
-    - name: "STEP 3: 깃허브로부터 인증서(CRT) 보급 및 갱신"
+    - name: "STEP 3: 깃허브 상위 폴더로부터 인증서(CRT) 보급 및 갱신"
       copy:
         src: "{{ ssl_src_crt }}"
         dest: "{{ ssl_dest_path }}/server.crt"
         owner: root
         group: root
         mode: '0644'
-      notify: "Restart Apache" # 파일 내용이 바뀌면(갱신되면) 핸들러 호출!
+      notify: "Restart Apache"
 
-    - name: "STEP 4: 깃허브로부터 비밀키(KEY) 보급 및 갱신"
+    - name: "STEP 4: 깃허브 상위 폴더로부터 비밀키(KEY) 보급 및 갱신"
       copy:
         src: "{{ ssl_src_key }}"
         dest: "{{ ssl_dest_path }}/server.key"
         owner: root
         group: root
-        mode: '0600' # 키 파일은 보안상 엄격하게 관리!
+        mode: '0600'
       notify: "Restart Apache"
 
     - name: "STEP 5: SSL vhost 설정 정교화"
@@ -78,8 +78,8 @@
           - "   SSL 암호화 통신 설정이 완료되었습니다!"
           - "=========================================="
           - "📍 포트: 443 (HTTPS)"
-          - "📍 인증서 경로: {{ ssl_dest_path }}"
-          - "📍 상태: 인증서 배포 및 갱신 자동화 활성"
+          - "📍 소스 파일: {{ ssl_src_crt }} (Repository 최상위)"
+          - "📍 서버 경로: {{ ssl_dest_path }}"
           - "=========================================="
 
   handlers:
