@@ -3,9 +3,9 @@
   hosts: apache_servers
   become: yes
   vars:
-    # 사령관님, 필요에 따라 아래 도메인명을 수정하십시오!
     domain_name: "my-service.local"
     doc_root: "/var/www/{{ domain_name }}"
+    listen_port: 80  # 현재 사용 중인 포트
 
   tasks:
     - name: "STEP 1: 웹 루트 디렉토리 생성"
@@ -16,14 +16,14 @@
         group: www-data
         mode: '0755'
 
-    - name: "STEP 2: vhost 설정 파일 생성 (copy 모듈 활용)"
+    - name: "STEP 2: vhost 설정 파일 생성"
       copy:
         dest: "/etc/apache2/sites-available/{{ domain_name }}.conf"
         owner: root
         group: root
         mode: '0644'
         content: |
-          <VirtualHost *:80>
+          <VirtualHost *:{{ listen_port }}>
               ServerName {{ domain_name }}
               DocumentRoot {{ doc_root }}
 
@@ -42,10 +42,9 @@
       args:
         creates: "/etc/apache2/sites-enabled/{{ domain_name }}.conf"
 
-    - name: "STEP 4: 기본 사이트 비활성화 (충돌 방지)"
+    - name: "STEP 4: 기본 사이트 비활성화"
       command: "a2dissite 000-default.conf"
       ignore_errors: yes
-      register: dissite_result
 
     - name: "STEP 5: 테스트용 index.html 생성"
       copy:
@@ -59,3 +58,15 @@
       service:
         name: apache2
         state: reloaded
+
+    - name: "📢 [최종 작전 보고서]"
+      debug:
+        msg: 
+          - "=========================================="
+          - "   APACHE VHOST 배포가 완료되었습니다!"
+          - "=========================================="
+          - "📍 접속 도메인: {{ domain_name }}"
+          - "📍 접속 포트  : {{ listen_port }}"
+          - "📍 웹 루트 경로: {{ doc_root }}"
+          - "📍 서버 아이피: {{ ansible_host | default(inventory_hostname) }}"
+          - "=========================================="
