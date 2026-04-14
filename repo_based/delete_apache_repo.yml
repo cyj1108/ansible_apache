@@ -1,0 +1,44 @@
+---
+- name: "Apache HTTPD repo_base delete Process"
+  hosts: apache_servers
+  become: yes
+  vars:
+    apache_pkg: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
+    apache_service: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
+
+  tasks:
+    - name: "STEP 1: 아파치 서비스 강제 중단 및 비활성화"
+      service:
+        name: "{{ apache_service }}"
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+
+    - name: "STEP 2 [Debian/Ubuntu]: 설정 파일확인 및 삭제"
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: yes           # 설정 파일까지 완벽 제거하는 핵심 옵션!
+        autoremove: yes      # 불필요한 의존성 패키지까지 정리
+      loop: ["apache2", "apache2-utils", "apache2-bin", "apache2-data"]
+      when: ansible_os_family == 'Debian'
+
+    - name: "STEP 2 [RedHat/CentOS]: 패키지 및 관련 설정 제거"
+      yum:
+        name: "{{ apache_pkg }}"
+        state: absent
+      when: ansible_os_family == 'RedHat'
+
+    - name: "STEP 3: 잔여 디렉토리 소거"
+      # 패키지 삭제 후에도 남아있는 폴더들을 물리적으로 제거.
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/etc/apache2"
+        - "/etc/httpd"
+        - "/var/www/html"  # 기본 웹 페이지 잔해 정리
+
+    - name: "STEP 4: 최종 보고"
+      debug:
+        msg: "설치 삭제 완료! {{ ansible_distribution }} 환경에서 아파치가 정상 제거되었습니다."

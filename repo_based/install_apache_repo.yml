@@ -1,0 +1,31 @@
+---
+- name: "Apache HTTPD repo_base install Process"
+  hosts: apache_servers
+  become: yes
+  vars:
+    # OS별 표준 패키지 및 서비스 이름 설정
+    apache_pkg: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
+    apache_service: "{{ (ansible_os_family == 'RedHat') | ternary('httpd', 'apache2') }}"
+
+  tasks:
+    - name: "STEP 1: 아파치 표준 패키지 설치"
+      package:
+        name: "{{ apache_pkg }}"
+        state: present
+
+    - name: "STEP 2: 서비스 자동 시작 설정 및 기동"
+      service:
+        name: "{{ apache_service }}"
+        state: started
+        enabled: yes
+
+    - name: "STEP 3: 설치 상태 확인 (HTTP 응답 체크)"
+      uri:
+        url: "http://localhost"
+        status_code: 200
+      register: http_check
+      ignore_errors: yes
+
+    - name: "STEP 4: 최종 보고"
+      debug:
+        msg: "표준 경로 설치 완료! {{ ansible_distribution }} 환경에서 아파치가 정상 기동 중입니다."

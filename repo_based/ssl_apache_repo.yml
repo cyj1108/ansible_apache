@@ -1,0 +1,89 @@
+---
+- name: "Apache SSL Set & Change"
+  hosts: apache_servers
+  become: yes
+  vars:
+    ssl_dest_path: "/etc/apache2/ssl"
+    # 현재 위치(repo_based)의 상위 폴더(../)에 있는 ssl 폴더지정
+    ssl_src_crt: "../ssl/server.crt"
+    ssl_src_key: "../ssl/server.key"
+
+  tasks:
+    - name: "STEP 1: SSL 모듈 및 관련 의존성 활성화"
+      command: "a2enmod ssl"
+      register: ssl_mod_result
+      changed_when: "'already enabled' not in ssl_mod_result.stdout"
+
+    - name: "STEP 2: 인증서 보관소 구축 (디렉토리)"
+      file:
+        path: "{{ ssl_dest_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: "STEP 3: 깃허브 상위 폴더로부터 인증서(CRT) 갱신"
+      copy:
+        src: "{{ ssl_src_crt }}"
+        dest: "{{ ssl_dest_path }}/server.crt"
+        owner: root
+        group: root
+        mode: '0644'
+      notify: "Restart Apache"
+
+    - name: "STEP 4: 깃허브 상위 폴더로부터 비밀키(KEY) 갱신"
+      copy:
+        src: "{{ ssl_src_key }}"
+        dest: "{{ ssl_dest_path }}/server.key"
+        owner: root
+        group: root
+        mode: '0600'
+      notify: "Restart Apache"
+
+    - name: "STEP 5: SSL vhost 설정 정교화"
+      copy:
+        dest: "/etc/apache2/sites-available/default-ssl.conf"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          <VirtualHost *:443>
+              ServerAdmin webmaster@localhost
+              DocumentRoot /var/www/html
+
+              SSLEngine on
+              SSLCertificateFile {{ ssl_dest_path }}/server.crt
+              SSLCertificateKeyFile {{ ssl_dest_path }}/server.key
+
+              <Directory /var/www/html>
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+
+              ErrorLog ${APACHE_LOG_DIR}/ssl_error.log
+              CustomLog ${APACHE_LOG_DIR}/ssl_access.log combined
+          </VirtualHost>
+      notify: "Restart Apache"
+
+    - name: "STEP 6: SSL 사이트 활성화 (a2ensite)"
+      command: "a2ensite default-ssl.conf"
+      register: ensite_result
+      changed_when: "'already enabled' not in ensite_result.stdout"
+      notify: "Restart Apache"
+
+    - name: "📢 [SSL 설정 결과]"
+      debug:
+        msg:
+          - "=========================================="
+          - "   SSL 암호화 통신 설정이 완료되었습니다!"
+          - "=========================================="
+          - "📍 포트: 443 (HTTPS)"
+          - "📍 소스 파일: {{ ssl_src_crt }} (Repository 최상위)"
+          - "📍 서버 경로: {{ ssl_dest_path }}"
+          - "=========================================="
+
+  handlers:
+    - name: "Restart Apache"
+      service:
+        name: apache2
+        state: restarted
