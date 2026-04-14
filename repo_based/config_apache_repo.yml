@@ -1,9 +1,9 @@
 ---
-- name: "Apache 포트 및 환경설정 정밀 개조 작전"
+- name: "Apache Port & ENV Set"
   hosts: apache_servers
   become: yes
   vars:
-    # 사령관님이 원하시는 포트로 언제든 수정 가능합니다!
+    # 원하는 포트로 수정
     http_port: 8081
     https_port: 4443
     # 성능 최적화 변수
@@ -20,7 +20,7 @@
         group: root
         mode: '0644'
         content: |
-          # 사령관님의 명령에 따른 포트 배치도
+          # 포트 배치도
           Listen {{ http_port }}
 
           <IfModule ssl_module>
@@ -53,7 +53,7 @@
       debug:
         msg:
           - "=========================================="
-          - "   APACHE 환경설정 개조가 완료되었습니다!"
+          - "   APACHE 환경설정 수정이 완료되었습니다!"
           - "=========================================="
           - "📍 HTTP 포트  : {{ http_port }}"
           - "📍 HTTPS 포트 : {{ https_port }}"
