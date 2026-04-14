@@ -1,0 +1,44 @@
+---
+- name: "Apache SSL 보안 강화 작전 (repo 기반)"
+  hosts: apache_servers
+  become: yes
+
+  tasks:
+    - name: "STEP 1: SSL 모듈 활성화 (a2enmod)"
+      command: "a2enmod ssl"
+      register: ssl_mod
+
+    - name: "STEP 2: 인증서 보관 디렉토리 생성"
+      file:
+        path: "/etc/apache2/ssl"
+        state: directory
+        mode: '0700'
+
+    - name: "STEP 3: 자체 서명 인증서 생성 (임시 병기)"
+      openssl_certificate:
+        path: /etc/apache2/ssl/apache.crt
+        privatekey_path: /etc/apache2/ssl/apache.key
+        provider: selfsigned
+      # 주의: 실제 상용 인증서가 있다면 copy 모듈로 대체 가능합니다.
+
+    - name: "STEP 4: SSL vhost 설정 적용"
+      copy:
+        content: |
+          <VirtualHost *:443>
+              ServerAdmin webmaster@localhost
+              DocumentRoot /var/www/html
+              SSLEngine on
+              SSLCertificateFile /etc/apache2/ssl/apache.crt
+              SSLCertificateKeyFile /etc/apache2/ssl/apache.key
+          </VirtualHost>
+        dest: "/etc/apache2/sites-available/default-ssl.conf"
+
+    - name: "STEP 5: SSL 사이트 활성화 및 재시작"
+      command: "a2ensite default-ssl.conf"
+      notify: "Restart Apache"
+
+  handlers:
+    - name: "Restart Apache"
+      service:
+        name: apache2
+        state: restarted
