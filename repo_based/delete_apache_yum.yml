@@ -41,4 +41,4 @@
 
     - name: "STEP 4: 최종 보고"
       debug:
-        msg: "설치 삭제 완료!"
+        msg: "설치 삭제 완료! {{ ansible_distribution }} 환경에서 아파치가 정상 제거되었습니다."
