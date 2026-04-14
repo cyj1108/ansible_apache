@@ -1,10 +1,10 @@
 ---
-- name: "Apache SSL 보안 강화 및 인증서 갱신 작전"
+- name: "Apache SSL Set & Change"
   hosts: apache_servers
   become: yes
   vars:
     ssl_dest_path: "/etc/apache2/ssl"
-    # 현재 위치(repo_based)의 상위 폴더(../)에 있는 ssl 폴더를 조준합니다!
+    # 현재 위치(repo_based)의 상위 폴더(../)에 있는 ssl 폴더지정
     ssl_src_crt: "../ssl/server.crt"
     ssl_src_key: "../ssl/server.key"
 
@@ -14,7 +14,7 @@
       register: ssl_mod_result
       changed_when: "'already enabled' not in ssl_mod_result.stdout"
 
-    - name: "STEP 2: 인증서 보관 진지 구축 (디렉토리)"
+    - name: "STEP 2: 인증서 보관소 구축 (디렉토리)"
       file:
         path: "{{ ssl_dest_path }}"
         state: directory
@@ -22,7 +22,7 @@
         group: root
         mode: '0700'
 
-    - name: "STEP 3: 깃허브 상위 폴더로부터 인증서(CRT) 보급 및 갱신"
+    - name: "STEP 3: 깃허브 상위 폴더로부터 인증서(CRT) 갱신"
       copy:
         src: "{{ ssl_src_crt }}"
         dest: "{{ ssl_dest_path }}/server.crt"
@@ -31,7 +31,7 @@
         mode: '0644'
       notify: "Restart Apache"
 
-    - name: "STEP 4: 깃허브 상위 폴더로부터 비밀키(KEY) 보급 및 갱신"
+    - name: "STEP 4: 깃허브 상위 폴더로부터 비밀키(KEY) 갱신"
       copy:
         src: "{{ ssl_src_key }}"
         dest: "{{ ssl_dest_path }}/server.key"
@@ -71,7 +71,7 @@
       changed_when: "'already enabled' not in ensite_result.stdout"
       notify: "Restart Apache"
 
-    - name: "📢 [SSL 작전 결과 보고]"
+    - name: "📢 [SSL 설정 결과]"
       debug:
         msg:
           - "=========================================="
