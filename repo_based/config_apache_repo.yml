@@ -4,8 +4,8 @@
   become: yes
   vars:
     # 사령관님이 원하시는 포트로 언제든 수정 가능합니다!
-    http_port: 80
-    https_port: 443
+    http_port: 8081
+    https_port: 4443
     # 성능 최적화 변수
     keep_alive_timeout: 5
     max_keep_alive_requests: 100
