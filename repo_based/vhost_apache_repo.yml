@@ -1,0 +1,41 @@
+---
+- name: "Apache vhost 표준 구성 작전 (repo 기반)"
+  hosts: apache_servers
+  become: yes
+  vars:
+    domain_name: "my-service.local"
+    doc_root: "/var/www/{{ domain_name }}"
+
+  tasks:
+    - name: "STEP 1: 웹 루트 디렉토리 생성"
+      file:
+        path: "{{ doc_root }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: "STEP 2: vhost 설정 파일 생성"
+      template:
+        content: |
+          <VirtualHost *:80>
+              ServerName {{ domain_name }}
+              DocumentRoot {{ doc_root }}
+              ErrorLog ${APACHE_LOG_DIR}/{{ domain_name }}_error.log
+              CustomLog ${APACHE_LOG_DIR}/{{ domain_name }}_access.log combined
+          </VirtualHost>
+        dest: "/etc/apache2/sites-available/{{ domain_name }}.conf"
+
+    - name: "STEP 3: 사이트 활성화 (a2ensite)"
+      command: "a2ensite {{ domain_name }}.conf"
+      args:
+        creates: "/etc/apache2/sites-enabled/{{ domain_name }}.conf"
+
+    - name: "STEP 4: 기본 사이트 비활성화 (선택 사항)"
+      command: "a2dissite 000-default.conf"
+      ignore_errors: yes
+
+    - name: "STEP 5: 아파치 설정 재로드"
+      service:
+        name: apache2
+        state: reloaded
