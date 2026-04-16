@@ -1,0 +1,52 @@
+---
+- name: "Apache Connect to Tomcat by Proxy"
+  hosts: apache_servers
+  become: yes
+  vars:
+    tomcat_ip: "127.0.0.1"
+    tomcat_port: 8080
+    domain_name: "my-service.local"
+
+  tasks:
+    - name: "STEP 1: Proxy 관련 모듈 활성화"
+      command: "a2enmod {{ item }}"
+      loop:
+        - proxy
+        - proxy_http
+        - proxy_ajp  # 혹시 모를 AJP 필요 대비
+      register: proxy_modules
+      changed_when: "'already enabled' not in proxy_modules.stdout"
+
+    - name: "STEP 2: vhost 설정에 톰캣 보급로(ProxyPass) 매핑"
+      copy:
+        dest: "/etc/apache2/sites-available/{{ domain_name }}.conf"
+        content: |
+          <VirtualHost *:80>
+              ServerName {{ domain_name }}
+
+              # 모든 요청을 톰캣으로 처리
+              ProxyPreserveHost On
+              ProxyPass / http://{{ tomcat_ip }}:{{ tomcat_port }}/
+              ProxyPassReverse / http://{{ tomcat_ip }}:{{ tomcat_port }}/
+
+              ErrorLog ${APACHE_LOG_DIR}/{{ domain_name }}_proxy_error.log
+              CustomLog ${APACHE_LOG_DIR}/{{ domain_name }}_proxy_access.log combined
+          </VirtualHost>
+      notify: "Restart Apache"
+
+    - name: "📢 [톰캣 연결 완료 보고]"
+      debug:
+        msg:
+          - "=========================================="
+          - "   APACHE -> TOMCAT 연결이 완료되었습니다!"
+          - "=========================================="
+          - "📍 WEB 구성 : http://{{ domain_name }}:80"
+          - "📍 WAS 구성 : http://{{ tomcat_ip }}:{{ tomcat_port }}"
+          - "📍 연결방식 : Reverse Proxy (mod_proxy)"
+          - "=========================================="
+
+  handlers:
+    - name: "Restart Apache"
+      service:
+        name: apache2
+        state: restarted
