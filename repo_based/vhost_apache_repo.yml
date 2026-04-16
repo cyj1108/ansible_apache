@@ -3,12 +3,17 @@
   hosts: apache_servers
   become: yes
   vars:
-    domain_name: "test1108.dbinc.com"
+    # 1. 세마포어에서 target_domain 변수를 받음 (미입력 시 기본값 사용)
+    domain_name: "{{ target_domain | default('test1108.dbinc.com') }}"
+    
+    # 2. 세마포어에서 target_port 변수를 받음 (미입력 시 80번 사용)
+    listen_port: "{{ target_port | default(80) }}"
+    
+    # 3. 도메인에 따라 웹 루트 경로 자동 생성
     doc_root: "/var/www/{{ domain_name }}"
-    listen_port: 80  # 현재 사용 중인 포트
 
   tasks:
-    - name: "STEP 1: 웹 루트 디렉토리 생성"
+    - name: "STEP 1: 가변형 웹 루트 디렉토리 생성"
       file:
         path: "{{ doc_root }}"
         state: directory
@@ -16,7 +21,7 @@
         group: www-data
         mode: '0755'
 
-    - name: "STEP 2: vhost 설정 파일 생성"
+    - name: "STEP 2: 프롬프트 값 기반 vhost 설정 파일 생성"
       copy:
         dest: "/etc/apache2/sites-available/{{ domain_name }}.conf"
         owner: root
@@ -42,14 +47,14 @@
       args:
         creates: "/etc/apache2/sites-enabled/{{ domain_name }}.conf"
 
-    - name: "STEP 4: 기본 사이트 비활성화"
+    - name: "STEP 4: 기존 기본 사이트 비활성화"
       command: "a2dissite 000-default.conf"
       ignore_errors: yes
 
-    - name: "STEP 5: 테스트용 index.html 생성"
+    - name: "STEP 5: 가변 도메인 테스트용 index.html 생성"
       copy:
         dest: "{{ doc_root }}/index.html"
-        content: "<h1>{{ domain_name }} vhost 추가 성공!</h1>"
+        content: "<h1>{{ domain_name }} (Port: {{ listen_port }}) 작전 성공! 사령관님 가즈아!</h1>"
         owner: www-data
         group: www-data
         mode: '0644'
@@ -59,14 +64,14 @@
         name: apache2
         state: reloaded
 
-    - name: "📢 [최종 설정 내역]"
+    - name: "📢 [최종 작전 보고서]"
       debug:
         msg: 
           - "=========================================="
-          - "   APACHE VHOST 배포가 완료되었습니다!"
+          - "   프롬프트 제어 vhost 배포가 완료되었습니다!"
           - "=========================================="
-          - "📍 접속 도메인: {{ domain_name }}"
-          - "📍 접속 포트  : {{ listen_port }}"
+          - "📍 설정 도메인: {{ domain_name }}"
+          - "📍 설정 포트  : {{ listen_port }}"
           - "📍 웹 루트 경로: {{ doc_root }}"
-          - "📍 서버 아이피: {{ ansible_host | default(inventory_hostname) }}"
+          - "📍 서버 IP    : {{ ansible_host | default(inventory_hostname) }}"
           - "=========================================="

@@ -1,30 +1,39 @@
 ---
-- name: "Apache Connect to Tomcat by Proxy"
+- name: "Apache-Tomcat 지능형 보급로(Proxy) 구성 작전"
   hosts: apache_servers
   become: yes
   vars:
-    tomcat_ip: "127.0.0.1"
-    tomcat_port: 8080
-    domain_name: "my-service.local"
+    # 1. 세마포어 프롬프트에서 도메인 정보를 받음
+    domain_name: "{{ target_domain | default('my-service.local') }}"
+    
+    # 2. 아파치가 대기할 포트 (기본 80)
+    listen_port: "{{ target_listen_port | default(80) }}"
+
+    # 3. 연결할 톰캣 부대의 좌표 (IP 및 포트)
+    tomcat_ip: "{{ target_tomcat_ip | default('127.0.0.1') }}"
+    tomcat_port: "{{ target_tomcat_port | default(8080) }}"
 
   tasks:
-    - name: "STEP 1: Proxy 관련 모듈 활성화"
+    - name: "STEP 1: Proxy 관련 모듈 활성화 (보급로 건설 도구)"
       command: "a2enmod {{ item }}"
       loop:
         - proxy
         - proxy_http
-        - proxy_ajp  # 혹시 모를 AJP 필요 대비
+        - proxy_ajp
       register: proxy_modules
       changed_when: "'already enabled' not in proxy_modules.stdout"
 
-    - name: "STEP 2: vhost 설정에 톰캣 보급로(ProxyPass) 매핑"
+    - name: "STEP 2: 프롬프트 값 기반 Proxy vhost 설정 생성"
       copy:
         dest: "/etc/apache2/sites-available/{{ domain_name }}.conf"
+        owner: root
+        group: root
+        mode: '0644'
         content: |
-          <VirtualHost *:80>
+          <VirtualHost *:{{ listen_port }}>
               ServerName {{ domain_name }}
 
-              # 모든 요청을 톰캣으로 처리
+              # 모든 요청을 지정된 톰캣 부대로 신속하게 전달!
               ProxyPreserveHost On
               ProxyPass / http://{{ tomcat_ip }}:{{ tomcat_port }}/
               ProxyPassReverse / http://{{ tomcat_ip }}:{{ tomcat_port }}/
@@ -34,15 +43,21 @@
           </VirtualHost>
       notify: "Restart Apache"
 
-    - name: "📢 [톰캣 연결 완료 보고]"
+    - name: "STEP 3: Proxy 사이트 활성화"
+      command: "a2ensite {{ domain_name }}.conf"
+      register: ensite_result
+      changed_when: "'already enabled' not in ensite_result.stdout"
+      notify: "Restart Apache"
+
+    - name: "📢 [톰캣 연결 작전 보고서]"
       debug:
         msg:
           - "=========================================="
-          - "   APACHE -> TOMCAT 연결이 완료되었습니다!"
+          - "   APACHE -> TOMCAT 지능형 연결 완료!"
           - "=========================================="
-          - "📍 WEB 구성 : http://{{ domain_name }}:80"
-          - "📍 WAS 구성 : http://{{ tomcat_ip }}:{{ tomcat_port }}"
-          - "📍 연결방식 : Reverse Proxy (mod_proxy)"
+          - "📍 접속 도메인: http://{{ domain_name }}:{{ listen_port }}"
+          - "📍 톰캣 목적지: http://{{ tomcat_ip }}:{{ tomcat_port }}"
+          - "📍 상태: 리버스 프록시 보급로 개설 성공"
           - "=========================================="
 
   handlers:

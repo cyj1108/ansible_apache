@@ -1,20 +1,24 @@
 ---
-- name: "Apache repo_base SSL Set & Change"
+- name: "Apache SSL 지능형 보안 강화 작전 (프롬프트 제어)"
   hosts: apache_servers
   become: yes
   vars:
+    # 1. 세마포어 프롬프트에서 도메인과 인증서 파일명을 받음
+    domain_name: "{{ target_domain | default('test1108.dbinc.com') }}"
+    cert_file_name: "{{ target_cert_name | default('server') }}" # 예: server.crt의 'server' 부분
+    
+    # 2. 고정 경로 및 소스 경로 설정
     ssl_dest_path: "/etc/apache2/ssl"
-    # 현재 위치(repo_based)의 상위 폴더(../)에 있는 ssl 폴더지정
-    ssl_src_crt: "../ssl/server.crt"
-    ssl_src_key: "../ssl/server.key"
+    ssl_src_crt: "../ssl/{{ cert_file_name }}.crt"
+    ssl_src_key: "../ssl/{{ cert_file_name }}.key"
 
   tasks:
-    - name: "STEP 1: SSL 모듈 및 관련 의존성 활성화"
+    - name: "STEP 1: SSL 모듈 활성화"
       command: "a2enmod ssl"
       register: ssl_mod_result
       changed_when: "'already enabled' not in ssl_mod_result.stdout"
 
-    - name: "STEP 2: 인증서 보관소 구축 (디렉토리)"
+    - name: "STEP 2: 인증서 보관소 디렉토리 보안 설정"
       file:
         path: "{{ ssl_dest_path }}"
         state: directory
@@ -22,64 +26,66 @@
         group: root
         mode: '0700'
 
-    - name: "STEP 3: 깃허브 상위 폴더로부터 인증서(CRT) 갱신"
+    - name: "STEP 3: 프롬프트 지정 인증서(CRT) 보급 및 갱신"
       copy:
         src: "{{ ssl_src_crt }}"
-        dest: "{{ ssl_dest_path }}/server.crt"
+        dest: "{{ ssl_dest_path }}/{{ cert_file_name }}.crt"
         owner: root
         group: root
         mode: '0644'
       notify: "Restart Apache"
 
-    - name: "STEP 4: 깃허브 상위 폴더로부터 비밀키(KEY) 갱신"
+    - name: "STEP 4: 프롬프트 지정 비밀키(KEY) 보급 및 갱신"
       copy:
         src: "{{ ssl_src_key }}"
-        dest: "{{ ssl_dest_path }}/server.key"
+        dest: "{{ ssl_dest_path }}/{{ cert_file_name }}.key"
         owner: root
         group: root
         mode: '0600'
       notify: "Restart Apache"
 
-    - name: "STEP 5: SSL vhost 설정 정교화"
+    - name: "STEP 5: 가변 도메인 기반 SSL vhost 설정 적용"
       copy:
-        dest: "/etc/apache2/sites-available/default-ssl.conf"
+        dest: "/etc/apache2/sites-available/{{ domain_name }}-ssl.conf"
         owner: root
         group: root
         mode: '0644'
         content: |
           <VirtualHost *:443>
+              ServerName {{ domain_name }}
               ServerAdmin webmaster@localhost
-              DocumentRoot /var/www/html
+              DocumentRoot /var/www/{{ domain_name }}
 
               SSLEngine on
-              SSLCertificateFile {{ ssl_dest_path }}/server.crt
-              SSLCertificateKeyFile {{ ssl_dest_path }}/server.key
+              SSLCertificateFile {{ ssl_dest_path }}/{{ cert_file_name }}.crt
+              SSLCertificateKeyFile {{ ssl_dest_path }}/{{ cert_file_name }}.key
 
-              <Directory /var/www/html>
+              <Directory /var/www/{{ domain_name }}>
                   AllowOverride All
                   Require all granted
               </Directory>
 
-              ErrorLog ${APACHE_LOG_DIR}/ssl_error.log
-              CustomLog ${APACHE_LOG_DIR}/ssl_access.log combined
+              ErrorLog ${APACHE_LOG_DIR}/{{ domain_name }}_ssl_error.log
+              CustomLog ${APACHE_LOG_DIR}/{{ domain_name }}_ssl_access.log combined
           </VirtualHost>
       notify: "Restart Apache"
 
-    - name: "STEP 6: SSL 사이트 활성화 (a2ensite)"
-      command: "a2ensite default-ssl.conf"
+    - name: "STEP 6: SSL 사이트 활성화"
+      command: "a2ensite {{ domain_name }}-ssl.conf"
       register: ensite_result
       changed_when: "'already enabled' not in ensite_result.stdout"
       notify: "Restart Apache"
 
-    - name: "📢 [SSL 설정 결과]"
+    - name: "📢 [SSL 작전 보고서]"
       debug:
         msg:
           - "=========================================="
-          - "   SSL 암호화 통신 설정이 완료되었습니다!"
+          - "   지능형 SSL 보안 설정이 완료되었습니다!"
           - "=========================================="
-          - "📍 포트: 443 (HTTPS)"
-          - "📍 소스 파일: {{ ssl_src_crt }} (Repository 최상위)"
-          - "📍 서버 경로: {{ ssl_dest_path }}"
+          - "📍 적용 도메인: {{ domain_name }}"
+          - "📍 사용 인증서: {{ cert_file_name }}.crt"
+          - "📍 HTTPS 포트 : 443"
+          - "📍 상태: 인증서 배포 및 갱신 자동화 활성"
           - "=========================================="
 
   handlers:
