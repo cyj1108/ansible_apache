@@ -1,5 +1,5 @@
 ---
-- name: "Apache SSL Set & Change"
+- name: "Apache repo_base SSL Set & Change"
   hosts: apache_servers
   become: yes
   vars:

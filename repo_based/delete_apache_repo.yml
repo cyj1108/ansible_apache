@@ -1,5 +1,5 @@
 ---
-- name: "Apache HTTPD repo_base delete Process"
+- name: "Apache repo_base delete Process"
   hosts: apache_servers
   become: yes
   vars:
